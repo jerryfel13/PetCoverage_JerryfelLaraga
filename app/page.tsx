@@ -51,6 +51,8 @@ export default function Home() {
   const peerRef = useRef<PeerSession | null>(null);
   const msgId = useRef(0);
   const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rawLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const myLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   function showNotice(text: string) {
     setNotice(text);
@@ -83,6 +85,7 @@ export default function Home() {
       onRemoteStream: (stream) => setRemoteStream(stream),
       onConnectionState: (state) => {
         if (state === "failed") {
+          void sendSignal(sessionId, peerId, "end");
           teardown("Connection failed (network).");
         }
       },
@@ -281,7 +284,16 @@ export default function Home() {
         if (!active) return;
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
-      } catch {}
+      } catch (e) {
+        const status = (e as { status?: number }).status;
+        const loc = rawLocationRef.current;
+        if (status === 404 && loc) {
+          try {
+            const placed = await join(sessionId, loc.lat, loc.lng);
+            if (active) setMyLocation(placed);
+          } catch {}
+        }
+      }
       if (active) timer = setTimeout(tick, POLL_INTERVAL_MS);
     };
     tick();
@@ -304,8 +316,10 @@ export default function Home() {
   }, [sessionId, phase]);
 
   async function handleReady(lat: number, lng: number) {
-    setMyLocation({ lat, lng });
-    await join(sessionId, lat, lng);
+    rawLocationRef.current = { lat, lng };
+    const placed = await join(sessionId, lat, lng);
+    myLocationRef.current = placed;
+    setMyLocation(placed);
     setPhase("live");
   }
 

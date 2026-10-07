@@ -43,5 +43,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return Response.json({ ok: true });
+  // Return the offset coords so the "me" pin matches what others see
+  // (raw location never round-trips back to other clients).
+  return Response.json({ ok: true, lat: offset.lat, lng: offset.lng });
 }

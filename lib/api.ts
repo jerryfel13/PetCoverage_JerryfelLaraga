@@ -5,19 +5,33 @@ export async function join(
   id: string,
   lat: number,
   lng: number,
-): Promise<void> {
-  await fetch("/api/join", {
+): Promise<{ lat: number; lng: number }> {
+  const res = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, lat, lng }),
+    credentials: "same-origin",
   });
+  if (!res.ok) throw new Error(`join failed: ${res.status}`);
+  const data = (await res.json()) as { lat?: number; lng?: number };
+  return {
+    lat: typeof data.lat === "number" ? data.lat : lat,
+    lng: typeof data.lng === "number" ? data.lng : lng,
+  };
 }
 
 export async function poll(id: string): Promise<PollResponse> {
   const res = await fetch(`/api/poll?id=${encodeURIComponent(id)}`, {
     cache: "no-store",
+    credentials: "same-origin",
   });
-  if (!res.ok) throw new Error(`poll failed: ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`poll failed: ${res.status}`) as Error & {
+      status?: number;
+    };
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -31,6 +45,7 @@ export async function sendSignal(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fromId, toId, type, payload }),
+    credentials: "same-origin",
   });
 }
 
@@ -38,13 +53,15 @@ export async function sendSignal(
 export function leave(id: string): void {
   const body = JSON.stringify({ id });
   if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-    navigator.sendBeacon("/api/leave", body);
+    const blob = new Blob([body], { type: "application/json" });
+    navigator.sendBeacon("/api/leave", blob);
   } else {
     void fetch("/api/leave", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
       keepalive: true,
+      credentials: "same-origin",
     });
   }
 }
