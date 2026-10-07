@@ -12,7 +12,7 @@ function dotColor(id: string): string {
   for (let i = 0; i < id.length; i++) {
     hash = (hash * 31 + id.charCodeAt(i)) | 0;
   }
-  return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`;
+  return `hsl(${Math.abs(hash) % 360}, 78%, 64%)`;
 }
 
 export default function WorldMap({
@@ -32,8 +32,6 @@ export default function WorldMap({
   const meMarkerRef = useRef<Marker | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Marker click handlers are bound once, so read the live click handler +
-  // connectability through refs (synced in an effect, never during render).
   const onPeerClickRef = useRef(onPeerClick);
   const canConnectRef = useRef(canConnect);
   useEffect(() => {
@@ -41,7 +39,6 @@ export default function WorldMap({
     canConnectRef.current = canConnect;
   });
 
-  // Initialise the map once.
   useEffect(() => {
     if (!TOKEN || !containerRef.current) return;
     let cancelled = false;
@@ -54,10 +51,21 @@ export default function WorldMap({
       const map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/dark-v11",
-        // Open centered on the user if we know where they are, else world view.
-        center: me ? [me.lng, me.lat] : [0, 20],
-        zoom: me ? 4 : 1.4,
+        center: me ? [me.lng, me.lat] : [12, 18],
+        zoom: me ? 2.6 : 1.55,
         attributionControl: true,
+        projection: "globe",
+        pitch: 12,
+      });
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "bottom-right");
+      map.on("style.load", () => {
+        map.setFog({
+          color: "rgb(8, 9, 18)",
+          "high-color": "rgb(46, 24, 92)",
+          "horizon-blend": 0.08,
+          "space-color": "rgb(4, 5, 14)",
+          "star-intensity": 0.85,
+        });
       });
       map.on("load", () => {
         if (!cancelled) setReady(true);
@@ -75,11 +83,9 @@ export default function WorldMap({
       mapRef.current = null;
       setReady(false);
     };
-    // `me` is only read for the initial center; we don't want to re-init on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Show / move the user's own "you are here" pin.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !me) return;
@@ -92,11 +98,11 @@ export default function WorldMap({
         const el = document.createElement("div");
         el.className = "pulse-me";
         el.title = "You are here";
-        el.innerHTML = `<span class="pulse-me-label">Me</span>📍`;
-        // anchor "bottom" → the pin's tip sits on the exact coordinate.
-        meMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+        el.innerHTML = `<span class="pulse-me-label">You</span>`;
+        meMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "center" })
           .setLngLat([me.lng, me.lat])
           .addTo(map);
+        map.flyTo({ center: [me.lng, me.lat], zoom: 3.1, speed: 0.7, curve: 1.4 });
       } else {
         meMarkerRef.current.setLngLat([me.lng, me.lat]);
       }
@@ -107,7 +113,6 @@ export default function WorldMap({
     };
   }, [me, ready]);
 
-  // Reconcile markers whenever the peer list changes (or the map becomes ready).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -126,20 +131,27 @@ export default function WorldMap({
           const el = document.createElement("button");
           el.className = "pulse-dot";
           el.style.background = dotColor(peer.id);
-          el.title = "Tap to connect";
+          el.style.color = dotColor(peer.id);
+          el.dataset.busy = peer.busy ? "1" : "0";
+          el.title = peer.busy ? "Already in a conversation" : "Tap to connect";
           el.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (canConnectRef.current) onPeerClickRef.current(peer.id);
+            if (canConnectRef.current && el.dataset.busy !== "1") {
+              onPeerClickRef.current(peer.id);
+            }
           });
           marker = new mapboxgl.Marker({ element: el })
             .setLngLat([peer.lng, peer.lat])
             .addTo(map);
           markers.set(peer.id, marker);
         }
-        marker.getElement().style.opacity = peer.busy ? "0.35" : "1";
+        const el = marker.getElement();
+        el.style.opacity = peer.busy ? "0.38" : "1";
+        el.classList.toggle("is-busy", peer.busy);
+        el.dataset.busy = peer.busy ? "1" : "0";
+        el.title = peer.busy ? "Already in a conversation" : "Tap to connect";
       }
 
-      // Drop markers for peers that went offline / got filtered out.
       for (const [id, marker] of markers) {
         if (!seen.has(id)) {
           marker.remove();
@@ -153,23 +165,34 @@ export default function WorldMap({
     };
   }, [peers, ready]);
 
+  const others = peers.length;
+
   return (
     <div className="absolute inset-0">
-      <div ref={containerRef} className="h-full w-full bg-zinc-900" />
+      <div ref={containerRef} className="h-full w-full bg-[#05060d]" />
 
       {!TOKEN && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
-          <p className="max-w-md rounded-lg bg-zinc-800 p-4 text-sm text-zinc-200">
+          <p className="glass max-w-md rounded-2xl p-5 text-sm text-zinc-200">
             Set{" "}
-            <code className="text-emerald-400">NEXT_PUBLIC_MAPBOX_TOKEN</code> in{" "}
-            <code>.env</code> to load the map.
+            <code className="text-emerald-300">NEXT_PUBLIC_MAPBOX_TOKEN</code> in{" "}
+            <code>.env</code> to load the globe.
           </p>
         </div>
       )}
 
-      {/* Online count */}
-      <div className="absolute bottom-4 left-4 rounded-full bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur">
-        {peers.length} online
+      <div className="pointer-events-none absolute left-4 top-4 z-10 sm:left-6 sm:top-6">
+        <p className="font-display text-2xl font-light tracking-tight">Pulse</p>
+        <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">
+          Live strangers
+        </p>
+      </div>
+
+      <div className="absolute bottom-4 left-4 rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-zinc-300 backdrop-blur sm:bottom-6 sm:left-6">
+        <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(126,227,194,0.9)]" />
+        {others === 0
+          ? "Waiting for someone else"
+          : `${others} ${others === 1 ? "stranger" : "strangers"} online`}
       </div>
     </div>
   );
