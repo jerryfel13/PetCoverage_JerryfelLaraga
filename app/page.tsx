@@ -255,13 +255,13 @@ export default function Home() {
       case "end": {
         const c = connRef.current;
         if (
-          (c.kind === "incoming" ||
+          (c.kind === "requesting" ||
+            c.kind === "incoming" ||
             c.kind === "connecting" ||
             c.kind === "connected") &&
           c.peerId === sig.fromId
         ) {
-          if (c.kind === "incoming") setConn({ kind: "idle" });
-          else teardown("Stranger disconnected.");
+          teardown("Stranger disconnected.");
         }
         break;
       }
@@ -289,6 +289,11 @@ export default function Home() {
         const loc = rawLocationRef.current;
         if (status === 404 && loc) {
           try {
+            // If we had an active connection, tear it down before rejoining
+            const currentConn = connRef.current;
+            if (currentConn.kind !== "idle") {
+              teardown("Connection lost.");
+            }
             const placed = await join(sessionId, loc.lat, loc.lng);
             if (active) setMyLocation(placed);
           } catch {}
