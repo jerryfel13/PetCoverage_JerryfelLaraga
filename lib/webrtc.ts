@@ -175,6 +175,7 @@ export class PeerSession {
     if (this.closed) return;
     this.closed = true;
     this.stopVideo();
+    this.pendingCandidates = [];
     if (this.dc) {
       try {
         this.dc.close();
