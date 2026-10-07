@@ -16,6 +16,7 @@ const VALID_TYPES: SignalType[] = [
 ];
 
 const MAX_PAYLOAD = 64 * 1024; // SDP/ICE are small; cap to be safe.
+const MAX_MAILBOX_SIZE = 100; // Maximum pending signals per recipient
 
 // POST /api/signal — body { fromId, toId, type, payload? }
 // Drops one message into the recipient's mailbox. Also manages the `busy`
@@ -49,6 +50,14 @@ export async function POST(request: NextRequest) {
 
   const signalType = type as SignalType;
   const payloadStr = typeof payload === "string" ? payload : null;
+
+  // Check mailbox size to prevent spam
+  const mailboxCount = await prisma.signal.count({
+    where: { toId },
+  });
+  if (mailboxCount >= MAX_MAILBOX_SIZE) {
+    return Response.json({ error: "mailbox full" }, { status: 429 });
+  }
 
   // Enforce "one active connection at a time": if the target is already busy,
   // auto-decline the request instead of delivering it.
